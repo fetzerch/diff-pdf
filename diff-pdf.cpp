@@ -298,7 +298,15 @@ bool page_compare(cairo_t *cr_out,
     cairo_surface_t *img1 = page1 ? render_page(page1) : NULL;
     cairo_surface_t *img2 = page2 ? render_page(page2) : NULL;
 
-    cairo_surface_t *diff = diff_images(img1, img2, 0, 0,
+    int offset_x = 0;
+    int offset_y = 0;
+    if (const char* env_offset_x = std::getenv("OFFSET_X")) {
+        offset_x = std::atoi(env_offset_x);
+    }
+    if (const char* env_offset_y = std::getenv("OFFSET_Y")) {
+        offset_y = std::atoi(env_offset_y);
+    }
+    cairo_surface_t *diff = diff_images(img1, img2, offset_x, offset_y,
                                         thumbnail, thumbnail_width);
     const bool has_diff = (diff != NULL);
 
@@ -311,7 +319,7 @@ bool page_compare(cairo_t *cr_out,
             cairo_save(cr_out);
             cairo_scale(cr_out, 72.0 / RESOLUTION, 72.0 / RESOLUTION);
 
-            cairo_set_source_surface(cr_out, diff ? diff : img1, 0, 0);
+            cairo_set_source_surface(cr_out, diff ? diff : img1, offset_x, offset_y);
             cairo_paint(cr_out);
 
             cairo_restore(cr_out);
@@ -486,6 +494,10 @@ const int ID_OFFSET_LEFT = wxNewId();
 const int ID_OFFSET_RIGHT = wxNewId();
 const int ID_OFFSET_UP = wxNewId();
 const int ID_OFFSET_DOWN = wxNewId();
+const int ID_OFFSET_LEFT2 = wxNewId();
+const int ID_OFFSET_RIGHT2 = wxNewId();
+const int ID_OFFSET_UP2 = wxNewId();
+const int ID_OFFSET_DOWN2 = wxNewId();
 const int ID_GUTTER = wxNewId();
 
 #define BMP_ARTPROV(id) wxArtProvider::GetBitmap(id, wxART_TOOLBAR)
@@ -497,6 +509,10 @@ const int ID_GUTTER = wxNewId();
 #define BMP_OFFSET_RIGHT   BMP_ARTPROV(wxART_GO_FORWARD)
 #define BMP_OFFSET_UP      BMP_ARTPROV(wxART_GO_UP)
 #define BMP_OFFSET_DOWN    BMP_ARTPROV(wxART_GO_DOWN)
+#define BMP_OFFSET_LEFT2    BMP_ARTPROV(wxART_GO_BACK)
+#define BMP_OFFSET_RIGHT2   BMP_ARTPROV(wxART_GO_FORWARD)
+#define BMP_OFFSET_UP2      BMP_ARTPROV(wxART_GO_UP)
+#define BMP_OFFSET_DOWN2    BMP_ARTPROV(wxART_GO_DOWN)
 
 #ifdef __WXGTK__
     #define BMP_ZOOM_IN    BMP_ARTPROV(wxT("gtk-zoom-in"))
@@ -547,11 +563,19 @@ public:
                          wxT("Offset one of the pages up (Ctrl up)"));
         toolbar->AddTool(ID_OFFSET_DOWN, wxT(""), BMP_OFFSET_DOWN,
                          wxT("Offset one of the pages down (Ctrl down)"));
+        toolbar->AddTool(ID_OFFSET_LEFT2, wxT(""), BMP_OFFSET_LEFT2,
+                         wxT("Offset one of the pages to the left (Ctrl left)"));
+        toolbar->AddTool(ID_OFFSET_RIGHT2, wxT(""), BMP_OFFSET_RIGHT2,
+                         wxT("Offset one of the pages to the right (Ctrl right)"));
+        toolbar->AddTool(ID_OFFSET_UP2, wxT(""), BMP_OFFSET_UP2,
+                         wxT("Offset one of the pages up (Ctrl up)"));
+        toolbar->AddTool(ID_OFFSET_DOWN2, wxT(""), BMP_OFFSET_DOWN2,
+                         wxT("Offset one of the pages down (Ctrl down)"));
 
         toolbar->Realize();
         SetToolBar(toolbar);
 
-        wxAcceleratorEntry accels[8];
+        wxAcceleratorEntry accels[12];
         accels[0].Set(wxACCEL_NORMAL, WXK_PAGEUP, ID_PREV_PAGE);
         accels[1].Set(wxACCEL_NORMAL, WXK_PAGEDOWN, ID_NEXT_PAGE);
         accels[2].Set(wxACCEL_CTRL, (int)'=', ID_ZOOM_IN);
@@ -560,7 +584,10 @@ public:
         accels[5].Set(wxACCEL_CTRL, WXK_RIGHT, ID_OFFSET_RIGHT);
         accels[6].Set(wxACCEL_CTRL, WXK_UP, ID_OFFSET_UP);
         accels[7].Set(wxACCEL_CTRL, WXK_DOWN, ID_OFFSET_DOWN);
-
+        accels[8].Set(wxACCEL_CTRL, WXK_LEFT, ID_OFFSET_LEFT2);
+        accels[9].Set(wxACCEL_CTRL, WXK_RIGHT, ID_OFFSET_RIGHT2);
+        accels[10].Set(wxACCEL_CTRL, WXK_UP, ID_OFFSET_UP2);
+        accels[11].Set(wxACCEL_CTRL, WXK_DOWN, ID_OFFSET_DOWN2);
         wxAcceleratorTable accel_table(8, accels);
         SetAcceleratorTable(accel_table);
 
@@ -607,6 +634,17 @@ public:
         progress.Pulse();
 
         m_viewer->SetBestFitZoom();
+
+        int offset_x = 0;
+        int offset_y = 0;
+        if (const char* env_offset_x = std::getenv("OFFSET_X")) {
+            offset_x = std::atoi(env_offset_x);
+        }
+        if (const char* env_offset_y = std::getenv("OFFSET_Y")) {
+            offset_y = std::atoi(env_offset_y);
+        }
+        DoOffset(offset_x, offset_y);
+
         UpdateStatus();
 
         progress.Hide();
@@ -741,6 +779,10 @@ private:
     void OnOffsetRight(wxCommandEvent&) { DoOffset(1, 0); }
     void OnOffsetUp(wxCommandEvent&) { DoOffset(0, -1); }
     void OnOffsetDown(wxCommandEvent&) { DoOffset(0, 1); }
+    void OnOffsetLeft2(wxCommandEvent&) { DoOffset(-50, 0); }
+    void OnOffsetRight2(wxCommandEvent&) { DoOffset(50, 0); }
+    void OnOffsetUp2(wxCommandEvent&) { DoOffset(0, -50); }
+    void OnOffsetDown2(wxCommandEvent&) { DoOffset(0, 50); }
 
     DECLARE_EVENT_TABLE()
 
@@ -766,6 +808,10 @@ BEGIN_EVENT_TABLE(DiffFrame, wxFrame)
     EVT_TOOL     (ID_OFFSET_RIGHT, DiffFrame::OnOffsetRight)
     EVT_TOOL     (ID_OFFSET_UP,    DiffFrame::OnOffsetUp)
     EVT_TOOL     (ID_OFFSET_DOWN,  DiffFrame::OnOffsetDown)
+    EVT_TOOL     (ID_OFFSET_LEFT2,  DiffFrame::OnOffsetLeft2)
+    EVT_TOOL     (ID_OFFSET_RIGHT2, DiffFrame::OnOffsetRight2)
+    EVT_TOOL     (ID_OFFSET_UP2,    DiffFrame::OnOffsetUp2)
+    EVT_TOOL     (ID_OFFSET_DOWN2,  DiffFrame::OnOffsetDown2)
 END_EVENT_TABLE()
 
 
